@@ -105,23 +105,23 @@ def generate_medium_task(seed: int = 123) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     # C2: Category inconsistency in department column
     eng_indices = dirty_df[dirty_df["department"] == "Engineering"].index.tolist()
-    num_to_corrupt = int(len(eng_indices) * 0.6)
+    num_to_corrupt = int(len(eng_indices) * 0.90)
     idx_corrupt_eng = np.random.choice(eng_indices, size=num_to_corrupt, replace=False)
     dirty_df.loc[idx_corrupt_eng, "department"] = np.random.choice(["engineering", "Eng", "ENGINEERING"], size=num_to_corrupt)
     
     # C3: Mixed date formats
-    idx_date = np.random.choice(n_rows, size=int(n_rows * 0.3), replace=False)
+    idx_date = np.random.choice(n_rows, size=int(n_rows * 0.65), replace=False)
     def reformat_date(d_str: str) -> str:
         parts = d_str.split("-")
         return f"{parts[2]}/{parts[1]}/{parts[0]}"
     dirty_df.loc[idx_date, "hire_date"] = dirty_df.loc[idx_date, "hire_date"].apply(reformat_date)
     
     # C5: Salary nulls
-    idx_sal = np.random.choice(n_rows, size=int(n_rows * 0.08), replace=False)
+    idx_sal = np.random.choice(n_rows, size=int(n_rows * 0.28), replace=False)
     dirty_df.loc[idx_sal, "salary"] = np.nan
     
     # C1: Duplicate rows: duplicate 40 random rows
-    idx_dup = np.random.choice(n_rows, size=40, replace=False)
+    idx_dup = np.random.choice(n_rows, size=120, replace=False)
     duplicates = dirty_df.iloc[idx_dup].copy()
     dirty_df = pd.concat([dirty_df, duplicates], ignore_index=True)
     
@@ -171,12 +171,12 @@ def generate_hard_task(seed: int = 777) -> Tuple[pd.DataFrame, pd.DataFrame]:
     dirty_df = deepcopy(clean_df)
     
     # C1 & C5: Domain-aware nulls in processing_fee
-    idx_fee = np.random.choice(n_rows, size=int(n_rows * 0.15), replace=False)
+    idx_fee = np.random.choice(n_rows, size=int(n_rows * 0.30), replace=False)
     dirty_df.loc[idx_fee, "processing_fee"] = np.nan
     clean_df.loc[idx_fee, "processing_fee"] = 0.0
     
     # C2: Statistical outliers in amount
-    idx_outliers = np.random.choice(n_rows, size=int(n_rows * 0.03), replace=False)
+    idx_outliers = np.random.choice(n_rows, size=int(n_rows * 0.12), replace=False)
     dirty_df.loc[idx_outliers, "amount"] = dirty_df.loc[idx_outliers, "amount"] * 100.0
     
     # Expected outcome for clean_df computes IQR bounds over the dirty distribution
@@ -189,12 +189,12 @@ def generate_hard_task(seed: int = 777) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     # C3: Category hierarchy inconsistency
     purchase_idx = dirty_df[dirty_df["transaction_type"] == "purchase"].index.tolist()
-    num_cat_err = int(len(purchase_idx) * 0.25)
+    num_cat_err = int(len(purchase_idx) * 0.75)
     cat_err_idx = np.random.choice(purchase_idx, size=num_cat_err, replace=False)
     dirty_df.loc[cat_err_idx, "merchant_category"] = np.random.choice(["RETAIL", "Food"], size=num_cat_err)
     
     # C4: Impossible values
-    num_neg = int(len(purchase_idx) * 0.05)
+    num_neg = int(len(purchase_idx) * 0.15)
     neg_idx = np.random.choice(purchase_idx, size=num_neg, replace=False)
     dirty_df.loc[neg_idx, "amount"] = -np.abs(dirty_df.loc[neg_idx, "amount"])
     # Clean matches dropping these negative occurrences entirely
@@ -202,10 +202,15 @@ def generate_hard_task(seed: int = 777) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     # C6: Status inconsistency
     completed_idx = dirty_df[dirty_df["status"] == "completed"].index.tolist()
-    num_status_err = int(len(completed_idx) * 0.20)
+    num_status_err = int(len(completed_idx) * 0.60)
     status_err_idx = np.random.choice(completed_idx, size=num_status_err, replace=False)
     dirty_df.loc[status_err_idx, "status"] = np.random.choice(["COMPLETED", "Complete"], size=num_status_err)
     
+    # C7: Add duplicate rows to hard task
+    idx_hard_dup = np.random.choice(len(dirty_df), size=80, replace=False)
+    hard_duplicates = dirty_df.iloc[idx_hard_dup].copy()
+    dirty_df = pd.concat([dirty_df, hard_duplicates], ignore_index=True)
+
     # Standardize clean copy
     clean_df.reset_index(drop=True, inplace=True)
     
