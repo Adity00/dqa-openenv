@@ -1,268 +1,252 @@
 ---
-title: Dqa Openenv Environment Server
-emoji: 🎯
+title: DQA OpenEnv - Data Quality Assurance Environment
+emoji: 🧹
 colorFrom: blue
 colorTo: indigo
 sdk: docker
 pinned: false
-app_port: 8000
-base_path: /web
-license: mit
-short_description: Data Quality Assurance
+app_port: 7860
 tags:
   - openenv
+  - reinforcement-learning
+  - data-quality
+  - rl-environment
 ---
 
-# Dqa Openenv Environment
+# DQA-OpenEnv: Data Quality Assurance Environment
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+> A reinforcement learning environment where AI agents learn to clean
+> real-world tabular datasets. Built for the Scaler x Meta PyTorch
+> OpenEnv Hackathon.
 
-## Quick Start
+## Environment Overview
 
-The simplest way to use the Dqa Openenv environment is through the `DqaOpenenvEnv` class:
+DQA-OpenEnv simulates one of the most common and expensive tasks in
+data engineering: cleaning dirty tabular datasets. An AI agent receives
+a corrupted DataFrame and must apply structured data-cleaning actions
+step-by-step to restore it to a known clean ground truth.
 
-```python
-from dqa_openenv import DqaOpenenvAction, DqaOpenenvEnv
+**Real-world utility:** Data professionals spend 60-80% of their time
+cleaning data. An agent trained on DQA-OpenEnv learns transferable
+skills applicable to real ETL pipelines.
 
-try:
-    # Create environment from Docker image
-    dqa_openenvenv = DqaOpenenvEnv.from_docker_image("dqa_openenv-env:latest")
+## Action Space
 
-    # Reset
-    result = dqa_openenvenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
+The agent can take the following actions at each step:
 
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
+| Action               | Description                  | Key Parameters                             |
+| -------------------- | ---------------------------- | ------------------------------------------ |
+| `fill_nulls`         | Fill missing values          | `strategy`: mean/median/mode/constant/drop |
+| `drop_duplicates`    | Remove duplicate rows        | `subset`: column list (optional)           |
+| `cast_type`          | Fix wrong data types         | `target_type`: int/float/str/bool          |
+| `normalize_category` | Unify categorical variants   | `mapping`: {old: new} dict                 |
+| `clip_outliers`      | Cap extreme values           | `method`: iqr/zscore                       |
+| `drop_column`        | Remove a column              | (no parameters needed)                     |
+| `filter_rows`        | Remove rows by condition     | `condition`: pandas query string           |
+| `merge_categories`   | Consolidate rare categories  | `from_values`, `to_value`                  |
+| `submit`             | Finalize and trigger grading | (ends the episode)                         |
+| `noop`               | Do nothing (penalized)       | (no parameters needed)                     |
 
-    for msg in messages:
-        result = dqa_openenvenv.step(DqaOpenenvAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
+**Example action (JSON):**
 
-finally:
-    # Always clean up
-    dqa_openenvenv.close()
+```json
+{
+  "action_type": "fill_nulls",
+  "column": "age",
+  "parameters": { "strategy": "median" }
+}
 ```
 
-That's it! The `DqaOpenenvEnv.from_docker_image()` method handles:
+## Observation Space
 
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
+After each action, the agent receives a `DQAObservation` containing:
 
-## Building the Docker Image
+| Field                | Type       | Description                                                        |
+| -------------------- | ---------- | ------------------------------------------------------------------ |
+| `task_description`   | str        | Plain English goal for this episode                                |
+| `dataset_preview`    | list[dict] | First 10 rows of current dataset                                   |
+| `column_stats`       | dict       | Per-column: null count, dtype, unique count, sample values         |
+| `issue_hints`        | list[str]  | Auto-detected problems in plain English                            |
+| `quality_scores`     | dict       | Live scores: completeness, consistency, uniqueness, validity (0-1) |
+| `step_count`         | int        | Current step number                                                |
+| `max_steps`          | int        | Episode budget                                                     |
+| `action_history`     | list[str]  | Previous actions taken                                             |
+| `last_action_result` | str        | Success/failure message                                            |
+| `done`               | bool       | Whether episode has ended                                          |
+| `reward`             | float      | Step reward (-1.0 to +1.0)                                         |
 
-Before using the environment, you need to build the Docker image:
+## Reward Function
+
+Rewards are shaped to provide signal at every step (not just at the end):
+
+- **Correct action**: `+0.1 to +0.3` (scaled by how much quality improved)
+- **Wasted action** (on clean column): `-0.05`
+- **Destructive action** (destroyed valid data): `-0.15 to -0.30`
+- **noop**: `-0.02` per use
+- **submit** (before max steps): `+0.05` efficiency bonus
+- **Timeout** (hit max steps): `-0.10` penalty on final score
+
+The step reward is the **delta** in overall quality score × 2.0.
+This means agents receive immediate feedback on whether each action helped.
+
+## Tasks
+
+### Task 1: Customer Survey Formatting (Easy)
+
+- **Dataset**: 200 rows, 6 columns (customer survey data)
+- **Issues**: 3 columns with nulls (10-15%), wrong dtype on age, trailing space in column name
+- **Max steps**: 20
+- **Target score for GPT-3.5**: 0.75 - 0.90
+- **Key challenge**: Identify which null strategy to use per column
+
+### Task 2: HR Employee Records Cleaning (Medium)
+
+- **Dataset**: ~620 rows, 8 columns (HR employee data)
+- **Issues**: 120 duplicate rows, department name variants (Eng/engineering/ENGINEERING), mixed date formats, one column with 40% nulls (should be DROPPED not filled), salary nulls
+- **Max steps**: 25
+- **Target score for GPT-3.5**: 0.60 - 0.75
+- **Key challenge**: Recognize that dropping performance_score is better than filling it
+
+### Task 3: Financial Transactions Quality (Hard)
+
+- **Dataset**: ~1080 rows, 12 columns (financial transactions)
+- **Issues**: processing_fee nulls (fill with 0.0 NOT mean), amount outliers (CLIP not drop), merchant_category casing, negative purchase amounts (filter rows), status inconsistency, 80 duplicate rows
+- **Max steps**: 30
+- **Target score for GPT-3.5**: 0.45 - 0.65
+- **Key challenge**: Order matters. Domain knowledge required (fees = 0, not mean).
+
+## Grading
+
+Episodes are graded across 4 quality dimensions:
+
+| Dimension        | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| **Completeness** | How well null values were handled vs ground truth |
+| **Consistency**  | How well categorical values match clean values    |
+| **Uniqueness**   | How well duplicates were removed                  |
+| **Validity**     | How well values fall within expected ranges       |
+
+Scores are weighted differently per task to reflect each task's character.
+Final score: `0.0 to 1.0`. Grade: `A (≥0.85) / B (≥0.70) / C (≥0.55) / D (≥0.40) / F`.
+
+## Baseline Scores
+
+Baseline scores using `gpt-3.5-turbo` with 8 steps per task:
+
+| Task     | Score     | Grade | Steps Used |
+| -------- | --------- | ----- | ---------- |
+| Easy     | ~0.85     | A/B   | 6-8        |
+| Medium   | ~0.72     | B     | 7-8        |
+| Hard     | ~0.58     | C     | 8          |
+| **Mean** | **~0.72** | **B** | —          |
+
+_Scores are reproducible with `TEMPERATURE=0.0` and fixed dataset seeds._
+
+## Setup & Usage
+
+### Requirements
+
+- Python 3.10+
+- Docker (for containerized deployment)
+- OpenAI API key or HuggingFace token
+
+### Local Installation
 
 ```bash
-# From project root
-docker build -t dqa_openenv-env:latest -f server/Dockerfile .
+git clone https://github.com/Adity00/dqa-openenv.git
+cd dqa-openenv
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install openenv-core pandas numpy openai
 ```
 
-## Deploying to Hugging Face Spaces
-
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+### Run the Environment Server Locally
 
 ```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
+uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
-The `openenv push` command will:
-
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
-
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
+### Run Baseline Inference
 
 ```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
-
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
+export OPENAI_API_KEY=your-key-here
+export MODEL_NAME=gpt-3.5-turbo
+python inference.py
 ```
 
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
-
-The deployed space includes:
-
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
-
-## Environment Details
-
-### Action
-
-**DqaOpenenvAction**: Contains a single field
-
-- `message` (str) - The message to echo back
-
-### Observation
-
-**DqaOpenenvObservation**: Contains the echo response and metadata
-
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-
-The reward is calculated as: `message_length × 0.1`
-
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Dqa Openenv environment server running, you can connect directly:
-
-```python
-from dqa_openenv import DqaOpenenvEnv
-
-# Connect to existing server
-dqa_openenvenv = DqaOpenenvEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = dqa_openenvenv.reset()
-result = dqa_openenvenv.step(DqaOpenenvAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `dqa_openenvenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from dqa_openenv import DqaOpenenvAction, DqaOpenenvEnv
-
-# Connect with context manager (auto-connects and closes)
-with DqaOpenenvEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(DqaOpenenvAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    DqaOpenenvEnvironment,  # Pass class, not instance
-    DqaOpenenvAction,
-    DqaOpenenvObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from dqa_openenv import DqaOpenenvAction, DqaOpenenvEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with DqaOpenenvEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(DqaOpenenvAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
+### Docker
 
 ```bash
-# From the server directory
-python3 server/dqa_openenv_environment.py
+# Build
+docker build -t dqa-openenv -f server/Dockerfile .
+
+# Run
+docker run -p 7860:7860 \
+  -e OPENAI_API_KEY=your-key \
+  -e MODEL_NAME=gpt-3.5-turbo \
+  dqa-openenv
 ```
 
-This verifies that:
-
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
-
-### Running Locally
-
-Run the server locally for development:
+### Test the API
 
 ```bash
-uvicorn server.app:app --reload
+# Reset environment (easy task)
+curl -X POST http://localhost:7860/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "easy"}'
+
+# Take a step
+curl -X POST http://localhost:7860/step \
+  -H "Content-Type: application/json" \
+  -d '{"action_type": "fill_nulls", "column": "age", "parameters": {"strategy": "median"}}'
+
+# Get state
+curl http://localhost:7860/state
 ```
 
 ## Project Structure
 
 ```
-dqa_openenv/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # DqaOpenenvEnv client
-├── models.py              # Action and Observation models
+dqa-openenv/
+├── inference.py              # Baseline agent script (mandatory)
+├── models.py                 # DQAAction, DQAObservation, DQAState
+├── client.py                 # HTTP/WebSocket client
+├── openenv.yaml              # OpenEnv spec metadata
+├── pyproject.toml            # Package definition
 └── server/
-    ├── __init__.py        # Server module exports
+    ├── app.py                # FastAPI server entry point
     ├── dqa_openenv_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
+    ├── Dockerfile            # Container definition
+    ├── requirements.txt      # Server dependencies
+    ├── tasks/                # Task definitions (easy/medium/hard)
+    ├── datasets/             # Dirty+clean DataFrame generators
+    ├── graders/              # Deterministic scoring engine
+    └── rewards/              # Delta reward calculator
 ```
+
+## API Reference
+
+| Endpoint  | Method | Description                                                  |
+| --------- | ------ | ------------------------------------------------------------ |
+| `/reset`  | POST   | Start new episode. Body: `{"task_id": "easy\|medium\|hard"}` |
+| `/step`   | POST   | Execute action. Body: DQAAction JSON                         |
+| `/state`  | GET    | Get current episode state                                    |
+| `/health` | GET    | Container health check                                       |
+| `/docs`   | GET    | Auto-generated OpenAPI docs                                  |
+| `/ws`     | WS     | WebSocket for persistent sessions                            |
+
+## Environment Variables
+
+| Variable         | Required        | Default                     | Description                                   |
+| ---------------- | --------------- | --------------------------- | --------------------------------------------- |
+| `OPENAI_API_KEY` | Yes (inference) | —                           | OpenAI API key for LLM calls                  |
+| `HF_TOKEN`       | Yes (inference) | —                           | HuggingFace token (alternative to OpenAI key) |
+| `API_BASE_URL`   | No              | `https://api.openai.com/v1` | LLM API endpoint                              |
+| `MODEL_NAME`     | No              | `gpt-3.5-turbo`             | Model to use for inference                    |
+
+## Competition Info
+
+- **Hackathon**: Scaler x Meta PyTorch OpenEnv Challenge
+- **Submission**: https://huggingface.co/spaces/Adity00/dqa-openenv
+- **GitHub**: https://github.com/Adity00/dqa-openenv
+- **Deadline**: April 8, 2026
