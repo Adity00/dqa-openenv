@@ -10,6 +10,8 @@ from openai import OpenAI
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
 HF_TOKEN = os.getenv("HF_TOKEN")
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
 API_KEY = os.getenv("OPENAI_API_KEY") or HF_TOKEN
 
 # Episode config — kept small for 20-minute runtime constraint
@@ -177,6 +179,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 
     episode_actions = []
     episode_reward = 0.0
+    step_rewards = []
     final_score = 0.0
     submitted = False
 
@@ -185,7 +188,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
     print(f"Initial quality score: {obs_dict.get('quality_scores', {}).get('overall', 0):.3f}")
     print(f"Issues detected: {len(obs_dict.get('issue_hints', []))}")
     print(f"{'='*50}")
-    print(f"[START] task={task_id}")
+    print(f"[START] task={task_id} env=dqa_openenv model={MODEL_NAME}")
 
     for step in range(1, MAX_STEPS_PER_TASK + 1):
         if obs_dict.get("done", False):
@@ -212,23 +215,32 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         action_dict = parse_action(response_text)
         action_type = action_dict["action_type"]
 
-        col_str = f" column={action_dict['column']}" if action_dict.get("column") else ""
         print(f"  Step {step}: {action_type}", end="")
         if action_dict.get("column"):
             print(f" on '{action_dict['column']}'", end="")
 
         # Execute action
+        step_error = "null"
         try:
             action = DQAAction(**action_dict)
             obs = env.step(action)
             obs_dict = json.loads(obs.model_dump_json())
             reward = obs_dict.get("reward", 0.0) or 0.0
             episode_reward += reward
+            step_rewards.append(reward)
+            done = obs_dict.get("done", False)
+            last_error = obs_dict.get("last_action_result", "")
+            if not obs_dict.get("last_action_success", True):
+                step_error = last_error.replace("\n", " ") if last_error else "action_failed"
             print(f" → reward: {reward:+.4f}")
-            print(f"[STEP] step={step} action={action_type}{col_str} reward={reward:.4f}")
         except Exception as e:
+            reward = 0.0
+            done = False
+            step_error = str(e).replace("\n", " ")
             print(f" → ERROR: {e}")
-            obs_dict["done"] = False
+
+        done_str = "true" if done else "false"
+        print(f"[STEP] step={step} action={action_type} reward={reward:.2f} done={done_str} error={step_error}")
 
         episode_actions.append(action_type)
 
@@ -261,7 +273,9 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         print(f"  {k}: {v:.4f}")
     print(f"FINAL SCORE: {final_score:.4f} (grade: {grader_result['grade']})")
     print(f"Feedback: {grader_result['feedback']}")
-    print(f"[END] task={task_id} score={final_score:.4f} grade={grader_result['grade']}")
+    rewards_str = ",".join(f"{r:.2f}" for r in step_rewards)
+    success_str = "true" if submitted else "false"
+    print(f"[END] success={success_str} steps={len(episode_actions)} rewards={rewards_str}")
 
     return {
         "task_id": task_id,
