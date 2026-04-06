@@ -8,8 +8,9 @@ from openai import OpenAI
 
 # Read mandatory env vars (competition requirement)
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("OPENAI_API_KEY") or HF_TOKEN
 
 # Episode config — kept small for 20-minute runtime constraint
 MAX_STEPS_PER_TASK = 8
@@ -184,6 +185,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
     print(f"Initial quality score: {obs_dict.get('quality_scores', {}).get('overall', 0):.3f}")
     print(f"Issues detected: {len(obs_dict.get('issue_hints', []))}")
     print(f"{'='*50}")
+    print(f"[START] task={task_id}")
 
     for step in range(1, MAX_STEPS_PER_TASK + 1):
         if obs_dict.get("done", False):
@@ -210,6 +212,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         action_dict = parse_action(response_text)
         action_type = action_dict["action_type"]
 
+        col_str = f" column={action_dict['column']}" if action_dict.get("column") else ""
         print(f"  Step {step}: {action_type}", end="")
         if action_dict.get("column"):
             print(f" on '{action_dict['column']}'", end="")
@@ -222,6 +225,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
             reward = obs_dict.get("reward", 0.0) or 0.0
             episode_reward += reward
             print(f" → reward: {reward:+.4f}")
+            print(f"[STEP] step={step} action={action_type}{col_str} reward={reward:.4f}")
         except Exception as e:
             print(f" → ERROR: {e}")
             obs_dict["done"] = False
@@ -257,6 +261,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         print(f"  {k}: {v:.4f}")
     print(f"FINAL SCORE: {final_score:.4f} (grade: {grader_result['grade']})")
     print(f"Feedback: {grader_result['feedback']}")
+    print(f"[END] task={task_id} score={final_score:.4f} grade={grader_result['grade']}")
 
     return {
         "task_id": task_id,
