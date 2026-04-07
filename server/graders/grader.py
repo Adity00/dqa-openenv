@@ -66,6 +66,8 @@ class DQAGrader:
         else:
             final_score = max(0.0, base_score - 0.10)
         final_score = round(final_score, 4)
+        # Validator requires strictly open interval (0, 1) — not 0.0 or 1.0
+        final_score = max(0.001, min(0.999, final_score))
 
         # Step 3: Calculate grade letter
         if final_score >= 0.85:
