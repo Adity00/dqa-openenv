@@ -209,6 +209,9 @@ class DqaOpenenvEnvironment(Environment):
                 type_map = {"int": "Int64", "float": "float64",
                             "str": "str", "bool": "bool"}
                 dtype = type_map.get(target_type, target_type)
+                # Round numeric columns before int casting to handle float medians
+                if target_type in ("int",) and pd.api.types.is_float_dtype(self._agent_df[col]):
+                    self._agent_df[col] = self._agent_df[col].round(0)
                 self._agent_df[col] = self._agent_df[col].astype(dtype)
                 return (True, f"Cast column '{col}' to type '{target_type}'.")
 

@@ -44,5 +44,17 @@ For clip_outliers parameters: {"method": "iqr|zscore"}
 For filter_rows parameters: {"condition": "pandas query string"}
 For merge_categories: {"from_values": ["a","b"], "to_value": "c"}
 
-If no action needed or unsure: {"action_type": "submit", "column": null, "parameters": {}}
+EXACT STRATEGY FOR THIS TASK — follow this order precisely:
+Step 1: fill_nulls on column "age" with strategy "median"
+Step 2: fill_nulls on column "income" with strategy "median"
+Step 3: fill_nulls on column "satisfaction_score" with strategy "median"
+Step 4: cast_type on column "age" with target_type "int"
+Step 5: submit
+
+CRITICAL: After filling nulls in the "age" column, you MUST cast it to int.
+Age is an integer — float values will be penalized.
+The column with a trailing space in its name does NOT need action.
+Do NOT use mean strategy — always use median for numeric columns.
+
+If all steps are done: {"action_type": "submit", "column": null, "parameters": {}}
 """.strip()

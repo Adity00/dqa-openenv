@@ -21,6 +21,9 @@ class QualityScorer:
         Computes 4 data quality dimensions for agent_df compared against the clean_df reference
         and returns a weighted overall score.
         """
+        # Normalize column names — handles trailing spaces in dirty data
+        agent_df = agent_df.copy()
+        agent_df.columns = agent_df.columns.str.strip()
         # --- COMPLETENESS ---
         if clean_df.empty or len(clean_df.columns) == 0:
             completeness = 1.0

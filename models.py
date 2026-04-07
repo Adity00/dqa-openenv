@@ -79,7 +79,6 @@ class DQAAction(Action):
             "normalize_category",
             "clip_outliers",
             "drop_column",
-            "filter_rows",
             "merge_categories"
         }
         
