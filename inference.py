@@ -277,9 +277,12 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         print(f"  {k}: {v:.4f}")
     print(f"FINAL SCORE: {final_score:.4f} (grade: {grader_result['grade']})")
     print(f"Feedback: {grader_result['feedback']}")
-    rewards_str = ",".join(f"{r:.2f}" for r in step_rewards)
+    # Clamp rewards to open interval (validator rejects 0.00 and 1.00)
+    clamped_rewards = [max(0.001, min(0.999, r)) if r >= 0 else r for r in step_rewards]
+    rewards_str = ",".join(f"{r:.2f}" for r in clamped_rewards)
     success_str = "true" if submitted else "false"
-    print(f"[END] success={success_str} steps={len(episode_actions)} rewards={rewards_str}")
+    score_str = f"{max(0.001, min(0.999, final_score)):.4f}"
+    print(f"[END] success={success_str} steps={len(episode_actions)} score={score_str} rewards={rewards_str}")
 
     return {
         "task_id": task_id,
