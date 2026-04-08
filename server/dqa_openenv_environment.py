@@ -92,6 +92,11 @@ class DqaOpenenvEnvironment(Environment):
         self._current_scores = QualityScorer.score(
             self._agent_df, self._clean_df, task_id
         )
+        # Strictly open interval enforcement — validator rejects 0.0 and 1.0
+        self._current_scores = {
+            k: max(1e-4, min(1.0 - 1e-4, float(v)))
+            for k, v in self._current_scores.items()
+        }
 
         return self._build_observation(
             last_action_result="Environment reset. Task started.",
@@ -137,6 +142,11 @@ class DqaOpenenvEnvironment(Environment):
             action_history=self._action_history
         )
         self._current_scores = new_scores
+        # Strictly open interval enforcement — validator rejects 0.0 and 1.0
+        self._current_scores = {
+            k: max(1e-4, min(1.0 - 1e-4, float(v)))
+            for k, v in self._current_scores.items()
+        }
         self._episode_reward += step_reward
 
         self._action_history.append(action.action_type)

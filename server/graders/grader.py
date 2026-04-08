@@ -58,6 +58,9 @@ class DQAGrader:
         # Step 1: Get quality scores
         scores = QualityScorer.score(agent_df, clean_df, task_id)
 
+        # Safety clamp — validator requires strictly open (0, 1)
+        scores = {k: max(1e-4, min(1.0 - 1e-4, float(v))) for k, v in scores.items()}
+
         # Step 2: Calculate final score with efficiency adjustment
         base_score = scores["overall"]
         if submitted:

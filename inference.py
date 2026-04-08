@@ -258,6 +258,8 @@ def run_task(client: OpenAI, task_id: str) -> dict:
     ).DatasetFactory.get_task_data(task_id)
 
     final_quality = QualityScorer.score(env._agent_df, clean_df, task_id)
+    # Safety clamp — validator requires strictly open (0, 1)
+    final_quality = {k: max(1e-4, min(1.0 - 1e-4, float(v))) for k, v in final_quality.items()}
     grader_result = grader.grade(
         agent_df=env._agent_df,
         clean_df=clean_df,
