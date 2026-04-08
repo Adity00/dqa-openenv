@@ -70,7 +70,7 @@ class DQAGrader:
             final_score = max(0.0, base_score - 0.10)
         # Strictly open interval enforcement — validator rejects 0.0 and 1.0
         final_score = float(round(final_score, 6))
-        final_score = max(1e-4, min(1.0 - 1e-4, final_score))
+        final_score = max(0.001, min(0.999, final_score))
 
         # Step 3: Calculate grade letter
         if final_score >= 0.85:

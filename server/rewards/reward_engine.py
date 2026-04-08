@@ -125,11 +125,11 @@ class QualityScorer:
         )
         
         return {
-            "completeness": round(max(0.0, min(1.0, completeness)), 4),
-            "consistency": round(max(0.0, min(1.0, consistency)), 4),
-            "uniqueness": round(max(0.0, min(1.0, uniqueness)), 4),
-            "validity": round(max(0.0, min(1.0, validity)), 4),
-            "overall": round(max(0.0, min(1.0, overall)), 4)
+            "completeness": round(max(0.001, min(0.999, completeness)), 4),
+            "consistency": round(max(0.001, min(0.999, consistency)), 4),
+            "uniqueness": round(max(0.001, min(0.999, uniqueness)), 4),
+            "validity": round(max(0.001, min(0.999, validity)), 4),
+            "overall": round(max(0.001, min(0.999, overall)), 4)
         }
 
 
