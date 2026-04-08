@@ -267,6 +267,8 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         submitted=submitted
     )
     final_score = grader_result["final_score"]
+    # Safety clamp — validator requires strictly open (0, 1)
+    final_score = max(1e-4, min(1.0 - 1e-4, float(final_score)))
 
     print(f"\nFinal quality scores:")
     for k, v in final_quality.items():
@@ -279,7 +281,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 
     return {
         "task_id": task_id,
-        "final_score": final_score,
+        "final_score": max(1e-4, min(1.0 - 1e-4, float(final_score))),
         "grade": grader_result["grade"],
         "steps_used": len(episode_actions),
         "submitted": submitted,
